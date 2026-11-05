@@ -5,7 +5,7 @@ const pageNames = {
   vehicles: ["YOUR REGISTERED VEHICLES", "My vehicles"], bookings: ["TRACK EVERY DECISION", "Requests & allocations"],
   profile: ["YOUR ACCOUNT DETAILS", "Profile"], "admin-dashboard": ["PARKING OPERATIONS", "Admin overview"],
   "admin-slots": ["SPACE INVENTORY", "Manage parking"], "admin-users": ["ACCOUNT DIRECTORY", "Users & vehicles"],
-  "admin-requests": ["REVIEW QUEUE", "Request review"], "admin-allocations": ["LIVE ASSIGNMENTS", "Allocations"]
+  "admin-allocations": ["LIVE ASSIGNMENTS", "Allocations"]
 };
 
 const escapeHTML = (value) => String(value ?? "").replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]);
@@ -101,7 +101,7 @@ function navigate(page) {
   const loaders = {
     dashboard: renderDashboard, slots: renderSlots, vehicles: renderVehicles, bookings: renderBookings, profile: renderProfile,
     "admin-dashboard": renderAdminDashboard, "admin-slots": renderAdminSlots, "admin-users": renderAdminUsers,
-    "admin-requests": renderAdminRequests, "admin-allocations": renderAdminAllocations
+    "admin-allocations": renderAdminAllocations
   };
   (loaders[page] || renderDashboard)(page).catch((error) => errorPage(page, error, page));
 }
@@ -116,7 +116,7 @@ async function renderDashboard() {
   const latest = requests[0];
   setPage("dashboard", `
     <section class="welcome-row"><div><span class="eyebrow">${new Date().toLocaleDateString("en", { weekday: "long", month: "long", day: "numeric" })}</span><h2>Good to see you, ${escapeHTML(state.user.name.split(" ")[0])}.</h2><p>Choose a destination and book instantly from ${formatRupees(25)} per hour.</p></div><button class="button button-primary" data-page="slots">Find a parking spot <span>↗</span></button></section>
-    <section class="stat-grid">${statTile("Available spaces", available, "mint", "Ready to request")}${statTile("My requests", requests.length, "amber", `${pending} awaiting review`)}${statTile("Active allocation", active ? active.slot_number : "—", "green", active ? `Zone ${escapeHTML(active.zone)}` : "No active space")}</section>
+    <section class="stat-grid">${statTile("Available spaces", available, "mint", "Ready to request")}${statTile("My requests", requests.length, "amber", `${pending} legacy pending`)}${statTile("Active allocation", active ? active.slot_number : "—", "green", active ? `Zone ${escapeHTML(active.zone)}` : "No active space")}</section>
     <section class="dashboard-columns"><div class="section-block"><div class="section-heading"><div><span class="eyebrow">YOUR SPACE</span><h2>${active ? "Currently allocated" : "No current allocation"}</h2></div><button class="text-button" data-page="bookings">View all ↗</button></div>${active ? `<div class="allocation-feature"><div class="allocation-number">${escapeHTML(active.slot_number)}</div><div><span class="eyebrow">ZONE ${escapeHTML(active.zone)}</span><h3>${escapeHTML(active.make)} ${escapeHTML(active.model)}</h3><p>${escapeHTML(active.registration_number)} · Approved ${new Date(active.allocated_at).toLocaleDateString()}</p></div>${statusBadge(active.status)}</div>` : emptyState("Your next spot is one request away", "Browse available spaces and choose the vehicle you’ll bring.", '<button class="button button-outline" data-page="slots">Browse parking</button>')}</div>
     <aside class="section-block recent-block"><div class="section-heading"><div><span class="eyebrow">RECENT ACTIVITY</span><h2>Latest request</h2></div></div>${latest ? `<div class="recent-line"><span class="recent-slot">${escapeHTML(latest.slot_number)}</span><div><strong>Zone ${escapeHTML(latest.zone)}</strong><small>${escapeHTML(latest.registration_number)}</small></div>${statusBadge(latest.status)}</div><p class="muted small-copy">Submitted ${new Date(latest.requested_at).toLocaleString()}</p>` : emptyState("Nothing here yet", "Your parking requests will show up here.")}</aside></section>
     <section class="section-block next-step"><div><span class="eyebrow">QUICK ACCESS</span><h2>Keep things moving.</h2></div><div class="quick-links"><button data-page="slots"><span>▦</span>Browse slots <b>↗</b></button><button data-page="vehicles"><span>⌑</span>Manage vehicles <b>↗</b></button><button data-page="bookings"><span>≡</span>Track requests <b>↗</b></button></div></section>`);
@@ -152,11 +152,9 @@ async function renderProfile() {
 
 async function renderAdminDashboard() {
   const stats = await api("/admin/dashboard");
-  const { requests } = await api("/parking-requests");
-  const recent = requests.filter((item) => item.status === "PENDING").slice(0, 4).map((item) => `<div class="queue-row"><span class="queue-slot">${escapeHTML(item.slot_number)}</span><div><strong>${escapeHTML(item.user_name)}</strong><small>${escapeHTML(item.registration_number)} · ${new Date(item.requested_at).toLocaleDateString()}</small></div>${statusBadge(item.status)}</div>`).join("");
   const totalSlots = Number(stats.totalSlots || 0);
   const occupancy = totalSlots ? Math.round(((Number(stats.occupiedSlots || 0) + Number(stats.reservedSlots || 0)) / totalSlots) * 100) : 0;
-  setPage("admin-dashboard", `<section class="welcome-row"><div><span class="eyebrow">PARKING OPERATIONS</span><h2>Bookings at a glance.</h2><p>Automatic allocations, hourly rates, and recorded demo revenue.</p></div><button class="button button-primary" data-page="admin-allocations">View bookings <span>↗</span></button></section><section class="stat-grid admin-stat-grid">${statTile("Demo revenue", formatRupees(stats.totalRevenue), "green", `${stats.paidBookings} demo-paid bookings · no real charges`)}${statTile("Total spaces", stats.totalSlots, "green", "Across all destinations")}${statTile("Available", stats.availableSlots, "mint", "Open for bookings")}${statTile("Occupied", stats.occupiedSlots, "coral", "In active use")}${statTile("Reserved", stats.reservedSlots, "amber", `${stats.maintenanceSlots} in maintenance`)}${statTile("Registered users", stats.totalUsers, "blue", "User accounts")}${statTile("Pending requests", stats.pendingRequests, "amber", "Legacy requests only")}</section><section class="dashboard-columns admin-columns"><div class="section-block"><div class="section-heading"><div><span class="eyebrow">LOT UTILIZATION</span><h2>Space at a glance</h2></div><button class="text-button" data-page="admin-slots">Manage spaces ↗</button></div><div class="utilization"><div class="utilization-copy"><strong>${occupancy}%</strong><span>occupied or reserved</span></div><div class="utilization-track"><span style="width:${occupancy}%"></span></div><div class="utilization-legend"><span><i class="legend-dot occupied"></i>${stats.occupiedSlots} occupied</span><span><i class="legend-dot reserved"></i>${stats.reservedSlots} reserved</span><span><i class="legend-dot available"></i>${stats.availableSlots} available</span></div></div></div><aside class="section-block"><div class="section-heading"><div><span class="eyebrow">LEGACY REQUESTS</span><h2>Needs review</h2></div><span class="count-chip">${stats.pendingRequests} pending</span></div>${recent || emptyState("No pending requests", "New bookings are automatically allocated.")}</aside></section><section class="section-block next-step"><div><span class="eyebrow">OPERATIONS</span><h2>Go straight to the work.</h2></div><div class="quick-links"><button data-page="admin-slots"><span>⊞</span>Manage spaces <b>↗</b></button><button data-page="admin-users"><span>♙</span>Browse users <b>↗</b></button><button data-page="admin-allocations"><span>↔</span>View bookings <b>↗</b></button></div></section>`);
+  setPage("admin-dashboard", `<section class="welcome-row"><div><span class="eyebrow">PARKING OPERATIONS</span><h2>Bookings at a glance.</h2><p>Automatic allocations, hourly rates, and recorded demo revenue.</p></div><button class="button button-primary" data-page="admin-allocations">View bookings <span>↗</span></button></section><section class="stat-grid admin-stat-grid">${statTile("Demo revenue", formatRupees(stats.totalRevenue), "green", `${stats.paidBookings} demo-paid bookings · no real charges`)}${statTile("Total spaces", stats.totalSlots, "green", "Across all destinations")}${statTile("Available", stats.availableSlots, "mint", "Open for bookings")}${statTile("Occupied", stats.occupiedSlots, "coral", "In active use")}${statTile("Reserved", stats.reservedSlots, "amber", `${stats.maintenanceSlots} in maintenance`)}${statTile("Registered users", stats.totalUsers, "blue", "User accounts")}</section><section class="dashboard-columns admin-columns"><div class="section-block"><div class="section-heading"><div><span class="eyebrow">LOT UTILIZATION</span><h2>Space at a glance</h2></div><button class="text-button" data-page="admin-slots">Manage spaces ↗</button></div><div class="utilization"><div class="utilization-copy"><strong>${occupancy}%</strong><span>occupied or reserved</span></div><div class="utilization-track"><span style="width:${occupancy}%"></span></div><div class="utilization-legend"><span><i class="legend-dot occupied"></i>${stats.occupiedSlots} occupied</span><span><i class="legend-dot reserved"></i>${stats.reservedSlots} reserved</span><span><i class="legend-dot available"></i>${stats.availableSlots} available</span></div></div></div></section><section class="section-block next-step"><div><span class="eyebrow">OPERATIONS</span><h2>Go straight to the work.</h2></div><div class="quick-links"><button data-page="admin-slots"><span>⊞</span>Manage spaces <b>↗</b></button><button data-page="admin-users"><span>♙</span>Browse users <b>↗</b></button><button data-page="admin-allocations"><span>↔</span>View bookings <b>↗</b></button></div></section>`);
 }
 
 async function renderAdminSlots() {
@@ -170,14 +168,6 @@ async function renderAdminUsers() {
   const userRows = users.map((user) => `<article class="directory-row"><div class="user-avatar">${escapeHTML(user.name.charAt(0).toUpperCase())}</div><div class="directory-person"><strong>${escapeHTML(user.name)}</strong><small>${escapeHTML(user.email)}</small></div><span class="role-label">${escapeHTML(user.role)}</span><span class="directory-count">${user.vehicle_count} vehicles</span><span class="muted">Joined ${new Date(user.created_at).toLocaleDateString()}</span></article>`).join("");
   const vehicleRows = vehicles.map((vehicle) => `<article class="record-row"><div class="record-leading"><span class="vehicle-symbol compact">${vehicle.vehicle_type === "BIKE" ? "⌁" : "▰"}</span><div><strong>${escapeHTML(vehicle.make)} ${escapeHTML(vehicle.model)} <span class="muted">· ${escapeHTML(vehicle.registration_number)}</span></strong><small>${escapeHTML(vehicle.user_name)} · ${escapeHTML(vehicle.user_email)}</small></div></div>${statusBadge(vehicle.vehicle_type)}</article>`).join("");
   setPage("admin-users", `<section class="page-intro"><div><h2>People and their vehicles.</h2><p>Accounts are read-only here; users manage their own profile and vehicles.</p></div><span class="count-chip">${users.length} users</span></section><section class="section-block table-section"><div class="section-heading"><div><span class="eyebrow">ACCOUNT DIRECTORY</span><h2>Registered users</h2></div></div><div class="directory-list">${userRows || emptyState("No registered users", "New accounts will appear here.")}</div></section><section class="section-block table-section"><div class="section-heading"><div><span class="eyebrow">VEHICLE DIRECTORY</span><h2>Registered vehicles <span class="heading-count">${vehicles.length}</span></h2></div></div>${vehicleRows || emptyState("No vehicles registered", "User vehicles will appear here.")}</section>`);
-}
-
-async function renderAdminRequests() {
-  const [{ requests }, { slots }] = await Promise.all([api("/parking-requests"), api("/parking-slots?status=AVAILABLE")]);
-  const pending = requests.filter((request) => request.status === "PENDING");
-  const rows = pending.map((request) => `<article class="review-card"><div class="review-top"><div class="record-leading"><span class="record-index">R${String(request.id).padStart(3, "0")}</span><div><strong>${escapeHTML(request.user_name)}</strong><small>${escapeHTML(request.user_email)} · ${escapeHTML(request.registration_number)}</small></div></div>${statusBadge(request.status)}</div><div class="review-space"><span><strong>${escapeHTML(request.slot_number)}</strong> · Zone ${escapeHTML(request.zone)}</span><small>Requested ${new Date(request.requested_at).toLocaleString()}</small></div><div class="review-actions"><label>Assign space<select name="slotId" form="approve-${request.id}">${slots.map((slot) => `<option value="${slot.id}" ${slot.id === request.slot_id ? "selected" : ""}>${escapeHTML(slot.slot_number)} · Zone ${escapeHTML(slot.zone)}</option>`).join("")}</select></label><form id="approve-${request.id}" data-approve-form="${request.id}"><button class="button button-primary" type="submit" ${slots.length ? "" : "disabled"}>Approve request</button></form><button class="button button-outline" data-action="reject-request" data-id="${request.id}">Reject</button></div></article>`).join("");
-  const history = requests.filter((request) => request.status !== "PENDING").map((request) => `<article class="record-row"><div class="record-leading"><span class="record-index">R${String(request.id).padStart(3, "0")}</span><div><strong>${escapeHTML(request.user_name)} · ${escapeHTML(request.slot_number)}</strong><small>${escapeHTML(request.registration_number)} · ${new Date(request.requested_at).toLocaleDateString()}</small></div></div>${statusBadge(request.status)}</article>`).join("");
-  setPage("admin-requests", `<section class="page-intro"><div><h2>Good decisions, made visible.</h2><p>Approval reserves the selected space; rejection returns the request to the user.</p></div><span class="count-chip">${pending.length} awaiting review</span></section><section class="review-list">${rows || emptyState("No requests waiting", "The review queue is all caught up.")}</section><section class="section-block table-section"><div class="section-heading"><div><span class="eyebrow">RECENT DECISIONS</span><h2>Request history</h2></div></div>${history || emptyState("No decisions yet", "Reviewed requests will be listed here.")}</section>`);
 }
 
 async function renderAdminAllocations() {
@@ -316,16 +306,6 @@ async function submitForm(event) {
     } catch (error) { toast(error.message, "error"); }
     return;
   }
-  if (form.matches("[data-approve-form]")) {
-    event.preventDefault();
-    const slotId = form.parentElement.querySelector("select[name=slotId]").value;
-    try {
-      await api(`/admin/parking-requests/${form.dataset.approveForm}/approve`, { method: "POST", body: JSON.stringify({ slotId: Number(slotId) }) });
-      toast("Request approved. Space reserved.");
-      navigate("admin-requests");
-    } catch (error) { toast(error.message, "error"); }
-    return;
-  }
   if (form.matches("[data-reassign-form]")) {
     event.preventDefault();
     try {
@@ -342,8 +322,7 @@ async function handleAction(action, id, button) {
     if (action === "cancel-request") await api(`/parking-requests/${id}`, { method: "DELETE" });
     if (action === "cancel-allocation") await api(`/allocations/${id}/cancel`, { method: "POST" });
     if (action === "delete-slot") await api(`/parking-slots/${id}`, { method: "DELETE" });
-    if (action === "reject-request") await api(`/admin/parking-requests/${id}/reject`, { method: "POST", body: "{}" });
-    const messages = { "delete-vehicle": "Vehicle removed.", "cancel-request": "Request cancelled.", "cancel-allocation": "Allocation cancelled and space released.", "delete-slot": "Parking space deleted.", "reject-request": "Request rejected." };
+    const messages = { "delete-vehicle": "Vehicle removed.", "cancel-request": "Request cancelled.", "cancel-allocation": "Allocation cancelled and space released.", "delete-slot": "Parking space deleted." };
     toast(messages[action] || "Updated.");
     navigate(state.page);
   } catch (error) { toast(error.message, "error"); }
